@@ -1,0 +1,9 @@
+{
+    "ignore": [
+        "node_modules",
+        "dist"
+    ],
+    "restartable": "r",
+    "whtch": ["*.*"],
+    "ext": "html,js,mjs,cjs,json,css"
+}

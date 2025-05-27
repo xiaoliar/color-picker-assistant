@@ -1,0 +1,19 @@
+{
+  "name": "color-picker-assistant",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^36.3.1",
+    "nodemon": "^3.1.10"
+  },
+  "keywords": [],
+  "author": "lfy",
+  "license": "ISC",
+  "description": "color picker assistant",
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6"
+  }
+}

@@ -1,0 +1,180 @@
+/* 全局样式重置 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  /* background-color: #f4f4f4; */
+  /* color: #333; */
+  color: #ddd9d9;
+  overflow: hidden;
+}
+
+/*当前颜色信息条*/
+#currentColor {
+  width: 100%;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* margin: 4px; */
+  padding-left: 4px;
+  background: #181818;
+  /* color: #CCCCCC; */
+  font-family: monospace;
+  font-size: 12px;
+}
+
+#colorSwatch {
+  width: 15px;
+  height: 15px;
+  background-color: transparent;
+}
+
+
+/* 顶部 tab 栏容器 */
+#tab-bar {
+  background-color: #2d2d2d;
+  height: 28px;
+  display: flex;
+  /* gap: 4px; */
+  align-items: center;
+  border-bottom: 1px solid #1a1a1a;
+  overflow-y: hidden;
+  overflow-x: scroll;
+  scrollbar-width: none;     /* Firefox */
+  -ms-overflow-style: none;  /* IE 10+ */
+  white-space: nowrap;
+}
+#tab-bar::-webkit-scrollbar {
+  display: none;             /* Chrome/Safari/Webkit */
+}
+
+/* 单个 tab 按钮 */
+.tab-button {
+  position: relative;
+  padding: 6px 14px;
+  background-color: transparent;
+  /* color: #bbb; */
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* 鼠标悬停效果 */
+.tab-button:hover {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+/* 活动 tab */
+.tab-button.active {
+  background-color: #1e1e1e;
+  color: #fff;
+}
+
+/* 顶部蓝色条：使用伪元素模拟 */
+.tab-button.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background-color: #007acc; /* VS Code 蓝色 */
+}
+
+
+/* 主体容器 */
+#main {
+  display: flex;
+  height: calc(100% - 48px); /* 去掉 tab 栏高度 */
+}
+
+/* 图片展示区域 */
+#tabs {
+  flex: 1;
+  background-color: #181818;
+  overflow: auto;
+  padding: 45px;
+  position: relative;
+}
+
+/* 每张图片的容器 */
+.image-canvas {
+  position: relative;
+  display: none;
+  justify-content: center;
+  align-items: center;
+}
+
+.image-canvas.active {
+  display: flex;
+}
+
+/* 图片基础样式 */
+/* .image-canvas img {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  border: 1px solid #ccc;
+} */
+
+/* 放大镜样式 */
+.magnifier {
+  position: absolute;
+  border: 1px solid black;
+  overflow: hidden;
+  display: none;
+}
+ 
+
+/* 右侧颜色信息列表-start */
+#colorList {
+  width: 260px;
+  background: #2d2d2d;
+  padding: 8px;
+  border-left: 1px solid #1e1e1e;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.color-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1e1e1e;
+  /* color: #DFE1E5; */
+  padding: 6px 8px;
+  margin-bottom: 10px;
+  font-family: monospace;
+  border-radius: 4px;
+}
+
+.color-swatch {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #EEEEEE;
+  background-color: transparent;
+  flex-shrink: 0;
+}
+
+.color-item.selected {
+    outline: 2px solid #007bff;
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+
+
+/* 右侧颜色信息列表-end */
+
