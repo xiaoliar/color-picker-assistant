@@ -111,10 +111,8 @@ body, html {
 
 /* 每张图片的容器 */
 .image-canvas {
-  position: relative;
+  position: absolute;
   display: none;
-  justify-content: center;
-  align-items: center;
 }
 
 .image-canvas.active {

@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, clipboard } = require('electron');
 const path = require('node:path');
-const { mouse, straightTo, Point } = require('@nut-tree-fork/nut-js');
+const { mouse, straightTo, Point} = require('@nut-tree-fork/nut-js');
 
 function createWindow() {
     const mainWindow = new BrowserWindow({
@@ -42,7 +42,7 @@ function createWindow() {
                 {
                     label: 'Capture Selected Area',
                     click: () => {
-                        mainWindow.webContents.webContents.send('trigger-capture');
+                        mainWindow.webContents.send('trigger-capture');
                     }
                 },
             ]
@@ -85,6 +85,10 @@ function setupIpc() {
         } catch (error) {
             return { success: false, error: error.message };
         }
+    });
+
+    ipcMain.on('simulate-click', async (event) => {
+        await mouse.leftClick();
     });
 
     // 显示右键菜单

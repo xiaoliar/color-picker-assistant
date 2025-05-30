@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onDeleteColorItem: (callback) => ipcRenderer.on('delete-color-item', (event) => callback()),
     onDeleteAllColorItem: (callback) => ipcRenderer.on('delete-all-color-item', (event) => callback()),
     onExportAllColorItem: (callback) => ipcRenderer.on('export-all-color-item', (event) => callback()),
+    simulateClick: () => ipcRenderer.send('simulate-click'),
 });
