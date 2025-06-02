@@ -1,22 +1,51 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <title>图色助手</title>
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <div id="toolbar">
-    <div id="currentColor">
-      <span id="colorSwatch"></span>
-      <span id="colorText"></span>
+  <div id="app">
+    <div class="titlebar-container">
+      <div class="titlebar-left"></div>
+      <div class="titlebar-center">
+        <input type="text" name="rect" id="input-rect">
+      </div>
+      <div class="titlebar-right"></div>
+    </div>
+    <div id="toolbar">
+      <div id="current-color">
+        <span id="color-swatch"></span>
+        <span id="color-text"></span>
+      </div>
+    </div>
+    <div id="main">
+      <div id="main-left">
+        <div id="tab-bar"></div>
+        <div id="tab-panels"></div>
+      </div>
+      <div id="main-right">
+        <div id="tab-buttons">
+          <button class="tab-btn" data-tab="color" title="显示颜色列表">Color List</button>
+          <button class="tab-btn" data-tab="image" title="显示图片列表">Image List</button>
+          <button class="tab-btn" data-tab="rect" title="显示矩形列表">Rect List</button>
+        </div>
+        <div id="tab-contents">
+          <div class="tab-content" data-tab="color"></div>
+          <div class="tab-content" data-tab="image"></div>
+          <div class="tab-content" data-tab="rect"></div>
+        </div>
+      </div>
     </div>
   </div>
-  <div id="tab-bar"></div>
-  <div id="main">
-    <div id="tabs"></div>
-    <div id="colorList"></div>
+  <!-- 弹窗预览容器 -->
+  <div id="preview-modal">
+    <img id="preview-img" />
   </div>
   <script src="app.js"></script>
 </body>
+
 </html>

@@ -5,20 +5,101 @@
   padding: 0;
 }
 
-body, html {
+body,
+html {
   width: 100%;
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  /* font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; */
   /* background-color: #f4f4f4; */
   /* color: #333; */
   color: #ddd9d9;
   overflow: hidden;
 }
 
-/*当前颜色信息条*/
-#currentColor {
+
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.titlebar-container {
+  height: 35px;
+  background: #181818;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-bottom: 1px solid #2B2B2B;
+  app-region: drag;
+}
+
+.titlebar-container .titlebar-left {
+  flex: 1 0 0;
+  height: 100%;
+  /* background: #ca7474; */
+}
+
+.titlebar-container .titlebar-center {
+  flex: 2 0 0;
+  height: 100%;
+  /* background: #0c706e; */
+  display: flex;
+
+  input {
+    width: 200px;
+    height: 26px;
+    margin: auto;
+    text-align: center;
+  }
+}
+
+input {
+  app-region: no-drag;
   width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #ddd;
+  background-color: #1e1e1e;
+  border: 1px solid #666;
+  border-radius: 4px;
+  outline: none;
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+  pointer-events: all;
+}
+
+input::placeholder{
+  color: #888;
+}
+
+input:focus {
+  border-color: #007acc;
+  /* VS Code 风格蓝 */
+  box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.2);
+}
+
+input[disabled] {
+  background-color: #2a2a2a;
+  color: #777;
+  cursor: not-allowed;
+}
+
+
+.titlebar-container .titlebar-right {
+  flex: 1 0 0;
+  height: 100%;
+  /* background: #4a25ce; */
+}
+
+#toolbar {
   height: 20px;
+}
+
+/*当前颜色信息条*/
+#current-color {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -30,29 +111,51 @@ body, html {
   font-size: 12px;
 }
 
-#colorSwatch {
+#color-swatch {
   width: 15px;
   height: 15px;
   background-color: transparent;
 }
 
+/* 主体容器 */
+#main {
+  display: flex;
+  flex-grow: 1;
+}
+
+
+
+
+#main-left {
+  flex: 7;
+  display: flex;
+  background-color: #181818;
+  flex-direction: column;
+  /* 垂直排列 tab-bar 和 tab-panels */
+}
 
 /* 顶部 tab 栏容器 */
 #tab-bar {
-  background-color: #2d2d2d;
-  height: 28px;
   display: flex;
+  height: 28px;
+  flex-shrink: 0;
+  /* 防止被压缩 */
+  background-color: #2d2d2d;
   /* gap: 4px; */
   align-items: center;
   border-bottom: 1px solid #1a1a1a;
   overflow-y: hidden;
   overflow-x: scroll;
-  scrollbar-width: none;     /* Firefox */
-  -ms-overflow-style: none;  /* IE 10+ */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE 10+ */
   white-space: nowrap;
 }
+
 #tab-bar::-webkit-scrollbar {
-  display: none;             /* Chrome/Safari/Webkit */
+  display: none;
+  /* Chrome/Safari/Webkit */
 }
 
 /* 单个 tab 按钮 */
@@ -90,63 +193,92 @@ body, html {
   left: 0;
   height: 2px;
   width: 100%;
-  background-color: #007acc; /* VS Code 蓝色 */
-}
-
-
-/* 主体容器 */
-#main {
-  display: flex;
-  height: calc(100% - 48px); /* 去掉 tab 栏高度 */
+  background-color: #007acc;
 }
 
 /* 图片展示区域 */
-#tabs {
+#tab-panels {
   flex: 1;
-  background-color: #181818;
   overflow: auto;
-  padding: 45px;
+  margin: 10px;
+}
+
+.tab {
   position: relative;
+  display: none;
+}
+
+.tab.active {
+  display: block;
 }
 
 /* 每张图片的容器 */
 .image-canvas {
   position: absolute;
-  display: none;
+  outline: none;
 }
 
-.image-canvas.active {
+
+
+
+#main-right {
+  flex: 3;
   display: flex;
-}
-
-/* 图片基础样式 */
-/* .image-canvas img {
-  max-width: 100%;
-  max-height: 100%;
-  image-rendering: pixelated;
-  cursor: crosshair;
-  border: 1px solid #ccc;
-} */
-
-/* 放大镜样式 */
-.magnifier {
-  position: absolute;
-  border: 1px solid black;
-  overflow: hidden;
-  display: none;
-}
- 
-
-/* 右侧颜色信息列表-start */
-#colorList {
-  width: 260px;
+  flex-direction: column;
   background: #2d2d2d;
-  padding: 8px;
   border-left: 1px solid #1e1e1e;
+}
+
+#tab-buttons {
+  height: 28px;
+  border-bottom: 1px solid #1a1a1a;
+  display: flex;
+  gap: 0;
+}
+
+/* 可选：按钮高亮样式 */
+#tab-buttons .tab-btn {
+  height: 100%;
+  background: transparent;
+  font-size: 12px;
+  color: #ccc;
+  border: none;
+  padding: 4px 12px;
+  cursor: pointer;
+  border-top: 2px solid transparent;
+}
+
+#tab-buttons .tab-btn.active {
+  background: #1e1e1e;
+  color: #fff;
+  border-top: 2px solid #007acc;
+}
+
+#tab-contents {
+  flex: 1;
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  overflow: auto;
+}
+
+/* 公共 tab 样式 */
+#tab-contents .tab-content {
+  position: absolute;
+  inset: 0;
+  /* 等价于 top:0; right:0; bottom:0; left:0 */
+  visibility: hidden;
+  padding: 8px;
   overflow-y: auto;
   font-size: 12px;
 }
 
+/* 激活状态的 tab */
+#tab-contents .tab-content.active {
+  visibility: visible;
+}
+
+/* 右侧颜色信息列表-start */
 .color-item {
   display: flex;
   align-items: center;
@@ -167,12 +299,87 @@ body, html {
   flex-shrink: 0;
 }
 
-.color-item.selected {
-    outline: 2px solid #007bff;
-    background-color: rgba(0, 123, 255, 0.1);
+.image-item {
+  margin: 4px;
+  /* padding: 2px; */
+  background: #1e1e1e;
+  border-radius: 4px;
+  flex-shrink: 0;
+  /* 防止图片压缩 */
 }
 
 
+.color-item:hover,
+.image-item:hover {
+  outline: 1px solid #007bff;
+  background-color: rgba(0, 123, 255, 0.1);
+  cursor: pointer;
+}
 
+/* .color-item.selected,
+.image-item.selected {
+  outline: 2px solid #ffa600;
+  background-color: rgba(0, 123, 255, 0.1);
+} */
 /* 右侧颜色信息列表-end */
 
+
+
+/* 放大镜样式 */
+.magnifier {
+  position: absolute;
+  border: 1px solid black;
+  overflow: hidden;
+  display: none;
+}
+
+/* 滚动条尺寸 */
+#tab-panels::-webkit-scrollbar,
+.tab-content::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+
+/* 设置滚动条交汇区域的背景颜色 */
+::-webkit-scrollbar-corner {
+  background: #2e2e2e;
+}
+
+/* 滚动条轨道（背景） */
+::-webkit-scrollbar-track {
+  background: #2e2e2e;
+}
+
+/* 滑块（thumb） */
+::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 4px;
+  border: 1px solid #2e2e2e;
+}
+
+/* 鼠标悬停时滑块 */
+::-webkit-scrollbar-thumb:hover {
+  background-color: #676767;
+}
+
+/* 弹窗预览容器 */
+#preview-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(88, 88, 88, 0.9);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+#preview-modal img {
+  min-width: 10%;
+  min-height: 10%;
+  max-width: 90%;
+  max-height: 90%;
+}
