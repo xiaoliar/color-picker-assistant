@@ -1,10 +1,98 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, clipboard } = require('electron');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const { mouse, straightTo, Point } = require('@nut-tree-fork/nut-js');
+import { app, BrowserWindow, Menu, dialog, ipcMain, clipboard } from 'electron';
+import { dirname, join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { mouse, straightTo, Point } from '@nut-tree-fork/nut-js';
+import { getRecentPaths, addRecentPath, clearRecentPaths } from './store.js';
+import { fileURLToPath } from 'url';
+
+// 模拟 __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+let mainWindow; // 提升为全局变量
+let mainMenu;
+let lastOpenPath = undefined;
+
+async function openImageDialog(win, defaultPath = undefined) {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: 'Select Images',
+        defaultPath,
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'svg'] }],
+        properties: ['openFile', 'multiSelections', 'createDirectory']
+    });
+
+    if (canceled || filePaths.length === 0) return;
+
+    win.webContents.send('load-images', filePaths);
+    const dir = dirname(filePaths[0]);
+    lastOpenPath = dir;
+    addRecentPath(dir); // 更新 recent 列表
+    refreshMenu(); // 重新刷新菜单，更新 recent 子菜单
+}
+
+function refreshMenu() {
+    createMenu(); // 相当于重新构建 recent 部分
+}
+
+function createMenu() {
+    const recentPaths = getRecentPaths();
+    const recentSubmenu = recentPaths.length > 0
+        ? recentPaths.map(p => ({
+            label: p,
+            click: () => openImageDialog(mainWindow, p)
+        })).concat([
+            { type: 'separator' },
+            {
+                label: 'Clear Recent',
+                click: () => {
+                    clearRecentPaths();
+                    refreshMenu();
+                }
+            }
+        ])
+        : [{ label: 'No recent paths', enabled: false }];
+
+    mainMenu = Menu.buildFromTemplate([
+        {
+            role: "appmenu"
+        },
+        {
+            label: 'Image',
+            submenu: [
+                {
+                    label: 'Open Image',
+                    id: 'open-image',
+                    click: () => openImageDialog(mainWindow, lastOpenPath)
+                },
+                {
+                    label: 'Open Recent',
+                    id: 'open-recent',
+                    submenu: recentSubmenu
+                },
+                {
+                    label: 'Capture Selected Area',
+                    id: 'capture-selected-area',
+                    click: () => {
+                        mainWindow.webContents.send('trigger-capture');
+                    }
+                },
+            ]
+        },
+        {
+            role: "windowmenu"
+        },
+        {
+            role: "viewMenu"
+        },
+        {
+            role: 'editMenu'
+        }
+    ]);
+    Menu.setApplicationMenu(mainMenu);
+}
 
 function createWindow() {
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1200,
         height: 900,
         minWidth: 800,
@@ -26,54 +114,18 @@ function createWindow() {
         // icon: 'logon.png',
         // title: '标题',
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true // 上下文隔离
         }
     });
-    const menu = Menu.buildFromTemplate([
-        {
-            role: "appmenu"
-        },
-        {
-            label: 'Image',
-            submenu: [
-                {
-                    label: 'Open Image',
-                    click: async () => {
-                        const result = await dialog.showOpenDialog({
-                            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp'] }],
-                            properties: ['openFile', 'multiSelections']
-                        });
-                        if (!result.canceled) {
-                            mainWindow.webContents.send('load-images', result.filePaths);
-                        }
-                    }
-                },
-                {
-                    label: 'Capture Selected Area',
-                    click: () => {
-                        mainWindow.webContents.send('trigger-capture');
-                    }
-                },
-            ]
-        },
-        {
-            role: "windowmenu"
-        },
-        {
-            role: "viewMenu"
-        },
-        {
-            role: 'editMenu'
-        }
-    ]);
-    Menu.setApplicationMenu(menu);
+
     mainWindow.loadFile('renderer/index.html').then(() => mainWindow.show());
 }
 
 app.whenReady().then(() => {
-    setupIpc();
+    createMenu(); // 先创建菜单
+    setupIpc(); // 只注册一次即可
     createWindow();
 
     app.on('activate', () => {
@@ -85,10 +137,19 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
-
-
+app.on('open-file', (event, path) => {
+    event.preventDefault();
+    mainWindow.webContents.send('load-images', path);
+});
 
 function setupIpc() {
+    ipcMain.handle('trigger-menu-item', (event, menuId) => {
+        const item = mainMenu.getMenuItemById(menuId);
+        if (item && typeof item.click === 'function') {
+            item.click({}, mainWindow, event);
+        }
+    });
+
     // 接收指令，根据方向移动鼠标1像素
     ipcMain.handle('move-mouse-relative', async (event, dx, dy) => {
         try {
@@ -152,7 +213,7 @@ function setupIpc() {
         const win = BrowserWindow.fromWebContents(event.sender);
         const menu = Menu.buildFromTemplate([
             {
-                label: '导出',
+                label: '导出全部颜色',
                 click: () => {
                     win.webContents.send('export-all-color-item');
                 }
@@ -178,7 +239,7 @@ function setupIpc() {
                 click: async () => {
                     const { canceled, filePath } = await dialog.showSaveDialog(win, {
                         title: '保存图片',
-                        defaultPath: item.name || `${Date.now()}.png`,
+                        defaultPath: item.filename || `${Date.now()}.png`,
                         filters: [
                             { name: 'PNG Image', extensions: ['png'] }
                         ]
@@ -188,7 +249,7 @@ function setupIpc() {
                     try {
                         const base64Data = item.data.replace(/^data:image\/\w+;base64,/, '');
                         const buffer = Buffer.from(base64Data, 'base64');
-                        await fs.writeFile(filePath, buffer);
+                        await writeFile(filePath, buffer);
                         console.log('图片已保存到', filePath);
                     } catch (err) {
                         console.error('保存失败:', err);
@@ -212,7 +273,7 @@ function setupIpc() {
         const win = BrowserWindow.fromWebContents(event.sender);
         const menu = Menu.buildFromTemplate([
             {
-                label: '导出',
+                label: '导出全部图片',
                 click: () => {
                     win.webContents.send('export-all-image-item');
                 }
@@ -224,6 +285,88 @@ function setupIpc() {
                 label: '清空全部',
                 click: () => {
                     win.webContents.send('delete-all-image-item');
+                }
+            }
+        ]);
+        menu.popup({ window: win });
+    });
+
+    ipcMain.on('show-rect-item-menu', (event, item) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        const contextMenu = Menu.buildFromTemplate([
+            {
+                label: '使用',
+                click: async () => {
+                    win.webContents.send('update-context-rect', item);
+                }
+            },
+            {
+                type: 'separator',
+            },
+            {
+                label: '删除',
+                click: () => {
+                    win.webContents.send('delete-rect-item');
+                }
+            }
+        ]);
+        contextMenu.popup({ window: win });
+    });
+
+    ipcMain.on('show-rect-list-menu', (event, list) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        const menu = Menu.buildFromTemplate([
+            {
+                label: '导出全部矩形',
+                click: () => {
+                    win.webContents.send('export-all-rect-item');
+                }
+            },
+            {
+                type: 'separator',
+            },
+            {
+                label: '清空全部',
+                click: () => {
+                    win.webContents.send('delete-all-rect-item');
+                }
+            }
+        ]);
+        menu.popup({ window: win });
+    });
+
+    ipcMain.on('show-recent-menu', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        // 直接使用之前创建的菜单
+        const item = mainMenu.getMenuItemById('open-recent');
+        item?.submenu?.popup({ window: win });
+    });
+
+    ipcMain.on('show-input-rect-menu', (event, rectStr) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        const menu = Menu.buildFromTemplate([
+            {
+                label: '复制',
+                click: () => {
+                    clipboard.writeText(rectStr);
+                    console.log('已复制:', rectStr);
+                    win.webContents.send('copy-input-rect');
+                }
+            },
+            {
+                label: '粘贴',
+                click: () => {
+                    const content = clipboard.readText('clipboard');
+                    win.webContents.send('paste-input-rect', content);
+                }
+            },
+            {
+                type: 'separator',
+            },
+            {
+                label: '清空',
+                click: () => {
+                    win.webContents.send('delete-input-rect');
                 }
             }
         ]);

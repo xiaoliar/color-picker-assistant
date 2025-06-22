@@ -36,27 +36,76 @@ html {
 }
 
 .titlebar-container .titlebar-left {
-  flex: 1 0 0;
+  flex: 0.5 0 0;
   height: 100%;
   /* background: #ca7474; */
 }
 
 .titlebar-container .titlebar-center {
-  flex: 2 0 0;
+  flex: 1 0 0;
   height: 100%;
   /* background: #0c706e; */
   display: flex;
-
-  input {
-    width: 200px;
-    height: 26px;
-    margin: auto;
-    text-align: center;
-  }
+  align-items: center;
+  justify-content: center;
 }
 
-input {
+.input-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 6px; /* 控制输入框和图标的间距 */
+  margin: auto; /* 居中 */
+}
+
+.input-with-icon input {
   app-region: no-drag;
+  width: 180px;
+  height: 26px;
+  text-align: center;
+}
+
+/* .input-with-icon .icon,
+.titlebar-right .icon {
+  app-region: no-drag;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  padding: 4px;
+  background-color: transparent;
+} */
+
+/* .input-with-icon .icon:hover,
+.titlebar-right .icon:hover {
+  background-color: #2E2E30;
+} */
+
+.icon-btn {
+  app-region: no-drag;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  padding: 4px;
+  background-color: transparent;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background-color: #2E2E30;
+}
+
+
+
+
+input {
   width: 100%;
   padding: 8px 12px;
   font-size: 12px;
@@ -87,9 +136,13 @@ input[disabled] {
 
 
 .titlebar-container .titlebar-right {
-  flex: 1 0 0;
+  flex: 1.5 0 0;
   height: 100%;
   /* background: #4a25ce; */
+  display: flex;
+  align-items: center;
+  justify-content: left;
+  gap: 6px;
 }
 
 #toolbar {
@@ -174,7 +227,7 @@ input[disabled] {
 }
 
 /* 鼠标悬停效果 */
-.tab-button:hover {
+.tab-button:not(.active):hover {
   background-color: #3a3a3a;
   color: #fff;
 }
@@ -238,6 +291,7 @@ input[disabled] {
 
 /* 可选：按钮高亮样式 */
 #tab-buttons .tab-btn {
+  position: relative;
   height: 100%;
   background: transparent;
   font-size: 12px;
@@ -253,6 +307,52 @@ input[disabled] {
   color: #fff;
   border-top: 2px solid #007acc;
 }
+
+#tab-buttons .tab-btn:not(.active):hover {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+
+.tab-btn-wrapper {
+  position: relative;
+}
+
+.tab-btn-wrapper .tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  padding: 1px 5px;
+  font-size: 11px;
+  background-color: red;
+  color: white;
+  border-radius: 10px;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+  display: none;
+  z-index: 2;
+  transform: translate(50%, -50%);
+}
+
+
+/* .tab-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  min-width: 16px;
+  padding: 2px 5px;
+  font-size: 12px;
+  line-height: 1;
+  background-color: red;
+  color: white;
+  border-radius: 8px;
+  text-align: center;
+  pointer-events: none;
+  display: none;
+} */
+
 
 #tab-contents {
   flex: 1;
@@ -279,7 +379,8 @@ input[disabled] {
 }
 
 /* 右侧颜色信息列表-start */
-.color-item {
+.color-item,
+.rect-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -308,19 +409,20 @@ input[disabled] {
   /* 防止图片压缩 */
 }
 
-
 .color-item:hover,
-.image-item:hover {
+.image-item:hover,
+.rect-item:hover {
   outline: 1px solid #007bff;
   background-color: rgba(0, 123, 255, 0.1);
   cursor: pointer;
 }
 
-/* .color-item.selected,
-.image-item.selected {
-  outline: 2px solid #ffa600;
-  background-color: rgba(0, 123, 255, 0.1);
-} */
+.color-item.selected,
+.image-item.selected,
+.rect-item.selected {
+  outline: 1px solid #ffa500;
+  /* background-color: rgba(0, 123, 255, 0.1); */
+}
 /* 右侧颜色信息列表-end */
 
 
@@ -382,4 +484,144 @@ input[disabled] {
   min-height: 10%;
   max-width: 90%;
   max-height: 90%;
+  cursor: grab;
 }
+
+/* toast */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: sans-serif;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  min-width: 240px;
+  max-width: 400px;
+  padding: 10px 10px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 13px;
+  animation: fadeIn 0.2s ease;
+  opacity: 1; 
+}
+
+.toast-close,
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 2px;
+  margin-left: auto;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.toast-close .icon,
+.tab-close .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.toast-close:hover,
+.tab-close:hover {
+  background-color: rgba(137, 137, 137, 0.5);
+}
+
+.toast-success   { background-color: #107c10; border-left: 4px solid #0e9c13; }
+.toast-error     { background-color: #c62828; border-left: 4px solid #e53935; }
+.toast-warning   { background-color: #ed6c02; border-left: 4px solid #ff9800; }
+.toast-info      { background-color: #2b88d8; border-left: 4px solid #409eff; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; transform: translateY(10px); }
+}
+
+
+/* 下拉选择框 */
+.algorithm-select-group {
+  display: flex;
+  align-items: center;
+  justify-content: left;
+  gap: 6px;
+}
+
+.algorithm-select-group label {
+  color: #eee;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.algorithm-select-group select {
+  app-region: no-drag;
+  padding: 4px 8px;
+  background-color: #2c2c2c;
+  color: #fff;
+  font-size: 12px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  appearance: none; /* 移除系统默认样式 */
+}
+
+.algorithm-select-group select:focus {
+  outline: none;
+  border-color: #1e90ff;
+}
+
+
+.threshold-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.threshold-group label {
+  font-size: 12px;
+  color: #eee;
+  white-space: nowrap;
+}
+
+.threshold-group input[type="number"] {
+  app-region: no-drag;
+  width: 50px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background-color: #2c2c2c;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  appearance: textfield;
+}
+
+.threshold-group input[type="number"]::-webkit-inner-spin-button,
+.threshold-group input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.threshold-group input[type="number"]:focus {
+  outline: none;
+  border-color: #1e90ff;
+}
+
+
+
+
+#tab-panels.dragover {
+  outline: 2px dashed #3f51b5;
+  background-color: rgba(63, 81, 181, 0.05);
+}
+

@@ -5,12 +5,196 @@ const tabBar = document.getElementById('tab-bar');
 const tabPanels = document.getElementById('tab-panels');
 
 const inputRect = document.getElementById('input-rect');
+const btnAddRect = document.getElementById('btn-add-rect');
 
 const tabButtons = document.querySelectorAll('#tab-buttons .tab-btn');
 const tabContents = document.querySelectorAll('#tab-contents .tab-content');
 const colorList = document.querySelector('#tab-contents .tab-content[data-tab=color]');
 const imageList = document.querySelector('#tab-contents .tab-content[data-tab=image]');
 const rectList = document.querySelector('#tab-contents .tab-content[data-tab=rect]');
+
+document.querySelectorAll('[data-menu-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        const id = btn.dataset.menuId;
+        window.electronAPI.sendCmd(action, id);
+    });
+});
+
+
+function colorMatch(c1, c2, threshold, algorithm) {
+    switch (algorithm) {
+        case 'equal':
+            return c1[0] === c2[0] && c1[1] === c2[1] && c1[2] === c2[2];
+
+        case 'diff':
+            return (
+                Math.abs(c1[0] - c2[0]) +
+                Math.abs(c1[1] - c2[1]) +
+                Math.abs(c1[2] - c2[2])
+            ) <= threshold;
+
+        case 'rgb':
+            return Math.sqrt(
+                Math.pow(c1[0] - c2[0], 2) +
+                Math.pow(c1[1] - c2[1], 2) +
+                Math.pow(c1[2] - c2[2], 2)
+            ) <= threshold;
+
+        case 'rgb+': {
+            const rMean = (c1[0] + c2[0]) / 2;
+            const r = c1[0] - c2[0];
+            const g = c1[1] - c2[1];
+            const b = c1[2] - c2[2];
+            const distance = Math.sqrt(
+                (2 + rMean / 256) * r * r +
+                4 * g * g +
+                (2 + (255 - rMean) / 256) * b * b
+            );
+            return distance <= threshold;
+        }
+
+        case 'hs': {
+            const [h1, s1] = rgb2hs(c1);
+            const [h2, s2] = rgb2hs(c2);
+            const dh = Math.min(Math.abs(h1 - h2), 360 - Math.abs(h1 - h2)); // 环状角度
+            const ds = Math.abs(s1 - s2);
+            return Math.sqrt(dh * dh + ds * ds) <= threshold;
+        }
+
+        default:
+            return false;
+    }
+}
+
+function rgb2hs([r, g, b]) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const delta = max - min;
+    let h = 0, s = 0;
+
+    if (delta !== 0) {
+        if (max === r) h = ((g - b) / delta) % 6;
+        else if (max === g) h = ((b - r) / delta) + 2;
+        else h = ((r - g) / delta) + 4;
+
+        h *= 60;
+        if (h < 0) h += 360;
+    }
+
+    s = max === 0 ? 0 : delta / max;
+    return [h, s];
+}
+
+
+function findMultiColorMatch(imageData, rect, colorList, threshold = 20, algorithm = 'rgb+') {
+    const { data, width, height } = imageData;
+    const [baseX, baseY] = colorList[0].pos;
+
+    const matchPattern = colorList.map(c => {
+        const [x, y] = c.pos;
+        return {
+            dx: x - baseX,
+            dy: y - baseY,
+            rgb: c.rgb
+        };
+    });
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            let matched = true;
+
+            for (let { dx, dy, rgb } of matchPattern) {
+                const tx = x + dx;
+                const ty = y + dy;
+
+                if (tx < 0 || ty < 0 || tx >= width || ty >= height) {
+                    matched = false;
+                    break;
+                }
+
+                const index = (ty * width + tx) * 4;
+                const r = data[index];
+                const g = data[index + 1];
+                const b = data[index + 2];
+
+                if (!colorMatch([r, g, b], rgb, threshold, algorithm)) {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if (matched) {
+                const result = { x: rect.x + x, y: rect.y + y };
+                showToast(`找到匹配颜色: (${result.x}, ${result.y})`, 'success');
+                return result;
+            }
+        }
+    }
+
+    showToast('没有找到匹配的颜色', 'info');
+    return null;
+}
+
+
+document.getElementById('btn-find-multicolor').addEventListener('click', () => {
+    const colors = getSelectedColorList();
+
+    if (colors.length === 0) {
+        showToast('请先添加颜色', 'error');
+        return;
+    }
+    console.log('多点找色:', colors);
+
+    if (!currentImageContext) {
+        showToast('当前没有图片上下文', 'error');
+        return;
+    }
+
+    const { imageCanvas, imgCtx, pointer, startPoint, endPoint } = currentImageContext;
+    pointer.style.display = 'none';
+    const rect = getSelectedRect(imageCanvas, startPoint, endPoint);
+    console.log('rect:', rect);
+    const imageData = imgCtx.getImageData(rect.x, rect.y, rect.w, rect.h);
+    const threshold = parseInt(document.getElementById('threshold-input')?.value || '20', 10);
+    const algorithm = document.getElementById('algorithm-select').value;
+
+    const result = findMultiColorMatch(imageData, rect, colors, threshold, algorithm);
+    if (result) {
+        console.log("匹配成功:", result);
+        showPointerAt(pointer, result);
+    }
+});
+
+function showPointerAt(pointer, point) {
+    // point 是 CSS 坐标，直接用
+    pointer.style.left = `${point.x}px`;
+    pointer.style.top = `${point.y}px`;
+    pointer.style.display = 'block';
+}
+
+function getSelectedColorList() {
+    const colors = [...colorList.querySelectorAll('.color-item')].map(e => {
+        const hex = e.dataset.hex; // #RRGGBB 格式
+        const rgb = e.dataset.rgb.split(',').map(Number); // [r, g, b] 格式
+        const pos = e.dataset.pos.split(',').map(Number); // [x, y] 格式
+        return { hex, rgb, pos };
+    });
+    return colors;
+}
+
+function getSelectedRect(imageCanvas, startPoint, endPoint) {
+    const rect = calRect(startPoint, endPoint);
+
+    if (rect.x < 0 || rect.y < 0) {
+        rect.x = 0;
+        rect.y = 0;
+        rect.w = imageCanvas.width;
+        rect.h = imageCanvas.height;
+    }
+
+    return rect;
+}
 
 function showTab(tab) {
     tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
@@ -27,39 +211,233 @@ tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
         showTab(btn.dataset.tab);
     });
+    btn.addEventListener('contextmenu', e => {
+        e.preventDefault(); // 阻止默认菜单
+
+        // 找到对应 panel
+        const panel = [...tabContents]
+            .find(p => p.dataset.tab === btn.dataset.tab);
+
+        if (panel) {
+            // 创建并分发 contextmenu 事件
+            const event = new MouseEvent('contextmenu', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                button: 2,
+                clientX: e.clientX,
+                clientY: e.clientY,
+            });
+
+            panel.dispatchEvent(event);
+        }
+    });
 });
 
-// 匹配 [x, y, w, h] 格式，x/y/w/h 为整数或小数
-const rectPattern = /^\[\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*,\s*\d+(\.\d+)?\s*,\s*\d+(\.\d+)?\s*\]$/;
+function updateBadgeFromList(tabName, listElement) {
+  const count = listElement.children.length;
+  updateTabBadge(tabName, count);
+}
+
+function observeList(tabName, listElement) {
+    const observer = new MutationObserver(() => {
+        updateBadgeFromList(tabName, listElement);
+    });
+
+    observer.observe(listElement, { childList: true, subtree: false });
+    // 初始化一次
+    updateBadgeFromList(tabName, listElement);
+}
+
+tabContents.forEach(panel => {
+    observeList(panel.dataset.tab, panel);
+});
+
+
+function updateTabBadge(tabName, count) {
+  const wrapper = document.querySelector(`.tab-btn-wrapper button[data-tab="${tabName}"]`)?.parentElement;
+  if (!wrapper) return;
+
+  const badge = wrapper.querySelector('.tab-badge');
+  if (!badge) return;
+
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// 匹配 [x, y, w, h] 格式，x/y/w/h 为整数
+const rectPattern = /^\[\s*\d+\s*,\s*\d+\s*,\s*-?\d+\s*,\s*-?\d+\s*\]$/;
 inputRect.addEventListener('input', e => {
-    if (!currentImageContext) return;
     const value = e.target.value.trim();
-    if (rectPattern.test(value)) {
-        // 你可以在这里安全地解析为数组使用
-        const nums = JSON.parse(value.replace(/(\d+)\s*(?=,|\])/g, '$1')); // 简单容错
-        // console.log('有效输入：', nums);
-        const { overlayCanvas, overlayCtx, startPoint, endPoint } = currentImageContext;
-        const [x, y, w, h] = nums;
-        startPoint.x = x;
-        startPoint.y = y;
-        endPoint.x = x + w - 1;
-        endPoint.y = y + h - 1;
-        drawSelectArea(overlayCanvas, overlayCtx, { x, y, w, h }, 'white');
+    if (!rectPattern.test(value)) return;
+    if (!currentImageContext) return;
+
+    const nums = value.match(/-?\d+/g).map(Number);
+    const [x, y, w, h] = nums;
+    // console.log('有效输入：', nums);
+
+    const { overlayCanvas, overlayCtx, startPoint, endPoint } = currentImageContext;
+    startPoint.x = x;
+    startPoint.y = y;
+    endPoint.x = x + w - 1;
+    endPoint.y = y + h - 1;
+    drawSelectArea(overlayCanvas, overlayCtx, regionToRect(nums), 'white');
+});
+
+inputRect.addEventListener('contextmenu', e => {
+    inputRect.blur();
+    e.preventDefault();
+    window.electronAPI.showInputRectMenu(inputRect.value.trim());
+});
+
+window.electronAPI.onCopyInputRect(() => {
+    showToast('复制成功', 'success');
+});
+
+window.electronAPI.onPasteInputRect((content) => {
+    inputRect.value = content;
+    // 触发一次 input 事件
+    const event = new Event('input', {
+        bubbles: true,
+        cancelable: true,
+    });
+    inputRect.dispatchEvent(event);
+});
+
+
+window.electronAPI.onDeleteInputRect(() => {
+    inputRect.value = '';
+
+    showToast('清除成功', 'info');
+    if (!currentImageContext) return;
+    const { overlayCanvas, overlayCtx, startPoint, endPoint, pointer } = currentImageContext;
+    startPoint.x = -1;
+    startPoint.y = -1;
+    endPoint.x = -1;
+    endPoint.y = -1;
+    pointer.style.display = 'none';
+
+    drawSelectArea(overlayCanvas, overlayCtx, calRect(startPoint, endPoint), 'white');
+});
+
+
+// 绑定添加矩形按钮
+btnAddRect.addEventListener('click', () => {
+    const value = inputRect.value.trim();
+    if (!rectPattern.test(value)) {
+        showToast('请输入有效的矩形格式: [x, y, w, h]', 'error');
+        return;
+    }
+
+    const nums = value.match(/-?\d+/g).map(Number);
+    const [x, y, w, h] = nums;
+
+    // 创建一个新的矩形项
+    const rect = regionToRect(nums);
+    const rectInfo = `${rectOrder++} [${x}, ${y}, ${w}, ${h}]`;
+    const rectItem = document.createElement('div');
+    rectItem.classList.add('rect-item');
+    rectItem.dataset.rect = JSON.stringify(rect);
+    rectItem.innerHTML = `<span>${rectInfo}</span>`;
+    rectItem.addEventListener('click', e => {
+        e.stopPropagation(); // 阻止事件冒泡，避免触发 rectList 的 click 事件
+        // 选中当前矩形项
+        document.querySelectorAll('.rect-item.selected').forEach(e => e.classList.remove('selected'));
+        rectItem.classList.add('selected');
+        currentSelectedRectItem = rectItem;
+
+        // 预览选中矩形
+        if (!currentImageContext) return;
+        const { overlayCanvas, overlayCtx } = currentImageContext;
+        drawSelectArea(overlayCanvas, overlayCtx, rect, '#ffa500');
+    });
+    rectItem.addEventListener('contextmenu', e => {
+        e.stopPropagation();
+        // 选中当前矩形项
+        document.querySelectorAll('.rect-item.selected').forEach(e => e.classList.remove('selected'));
+        rectItem.classList.add('selected');
+        currentSelectedRectItem = rectItem;
+
+        // 显示右键菜单
+        window.electronAPI.showRectItemMenu();
+    });
+    // 添加到矩形列表
+    rectList.appendChild(rectItem);
+    showToast(`添加矩形成功: ${rectInfo}`, 'success');
+});
+
+window.electronAPI.onUpdateContextRect(() => {
+    if (!currentImageContext || !currentSelectedRectItem) return;
+    const { overlayCanvas, overlayCtx, startPoint, endPoint } = currentImageContext;
+    const rect = JSON.parse(currentSelectedRectItem.dataset.rect);
+    startPoint.x = rect.x;
+    startPoint.y = rect.y;
+    endPoint.x = rect.x + rect.w - 1;
+    endPoint.y = rect.y + rect.h - 1;
+    drawSelectArea(overlayCanvas, overlayCtx, rect, 'white');
+    inputRect.value = `[${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`;
+});
+
+window.electronAPI.onDeleteRectItem(() => {
+    if (currentSelectedRectItem) {
+        const rect = JSON.parse(currentSelectedRectItem.dataset.rect);
+        currentSelectedRectItem.remove();
+        currentSelectedRectItem = null;
+        if (rectList.children.length === 0) {
+            rectOrder = 1; // 重置矩形项计数
+        }
+        showToast(`删除矩形成功: [${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`, 'info');
     }
 });
 
+rectList.addEventListener('contextmenu', e => {
+    window.electronAPI.showRectListMenu();
+});
+
+rectList.addEventListener('click', () => {
+    // 取消当前选中矩形项
+    document.querySelectorAll('.rect-item.selected').forEach(e => e.classList.remove('selected'));
+    currentSelectedRectItem = null;
+
+    // 绘制上下文矩形
+    if (!currentImageContext) return;
+    const { overlayCanvas, overlayCtx, startPoint, endPoint } = currentImageContext;
+    const rect = calRect(startPoint, endPoint);
+    drawSelectArea(overlayCanvas, overlayCtx, rect, 'white');
+});
+
+window.electronAPI.onExportAllRectItem(() => {
+    const result = [...rectList.querySelectorAll('.rect-item')].map(e => JSON.parse(e.dataset.rect));
+    // 你可以：打印、保存到文件、发送回主进程等等
+    console.log('导出矩形项:', result);
+    // window.electronAPI.saveExportedRectItems(result);
+    showToast(`已导出 ${result.length} 个矩形`, 'success');
+});
+
+window.electronAPI.onDeleteAllRectItem(() => {
+    rectList.innerHTML = ''; // 清空所有矩形项
+    currentSelectedRectItem = null;
+    rectOrder = 1;
+    showToast('已删除所有矩形', 'info');
+});
 
 
 const dpr = window.devicePixelRatio || 1;
 let colorOrder = 1;
+let imageOrder = 1;
+let rectOrder = 1;
 let currentImageContext = null;
 let currentSelectedColorItem = null;
 let currentSelectedImageItem = null;
 let currentSelectedRectItem = null;
 
 // 定义放大镜
-const zoomPixelCount = 15; // 放大镜显示的像素点数 (横向和纵向都是)
-const pixelSize = 13; // 放大镜显示的像素点每个像素块实际大小
+const zoomPixelCount = 17; // 放大镜显示的像素点数 (横向和纵向都是)
+const pixelSize = 19; // 放大镜显示的像素点每个像素块实际大小
 const magnifierSize = zoomPixelCount * pixelSize; // 放大镜大小
 const textBgHeight = 22;
 const magnifierWidth = magnifierSize;
@@ -84,6 +462,14 @@ function calRect(startPoint, endPoint) {
     return { x, y, w, h };
 }
 
+function regionToRect([x, y, w, h]) {
+    return { x, y, w, h };
+}
+
+function rectToRegion({ x, y, w, h }) {
+    return [x, y, w, h];
+}
+
 function calAndSetPoint(canvas, event, point) {
     const rect = canvas.getBoundingClientRect();
     point.x = Math.floor(event.clientX - rect.left);
@@ -100,10 +486,18 @@ function drawSelectArea(overlayCanvas, overlayCtx, { x, y, w, h }, strokeStyle) 
     overlayCtx.setLineDash([]); // 清除虚线样式，恢复默认
 }
 
-function loadImage(path) {
+function loadImage(path, options = {}) {
     const img = new Image();
     img.onload = () => {
-        const filename = path.split(/[\\/]/).pop(); // 提取文件名
+        // 提取文件名
+        const filename = options.name || (() => {
+            try {
+                // 支持普通文件路径
+                return path.split(/[\\/]/).pop();
+            } catch (e) {
+                return 'Untitled';
+            }
+        })();
 
         // 原始像素层canvas
         const imageCanvas = document.createElement('canvas');
@@ -141,61 +535,90 @@ function loadImage(path) {
 
         // 预览层框选功能
         const startPoint = {
-            x: 0,
-            y: 0
+            x: -1,
+            y: -1
         };
         const endPoint = {
-            x: 0,
-            y: 0
+            x: -1,
+            y: -1
         };
         let clientX, clientY, isDrawing = false; // 是否正在绘制框选
         let startX, startY, isDragging = false; // 是否正在拖拽
 
         overlayCanvas.addEventListener('mousedown', e => {
-            if (e.button !== 0) return; // 0 表示左键
-            // 如果在绘制框选，或上一次的移动一直长按鼠标离开了canvas元素的范围内松手导致不触发mouseup，直接退出
-            if (isDrawing || isDragging) return;
+            // 0 表示左键
+            if (e.button === 0) {
+                // 如果在绘制框选，或上一次的移动一直长按鼠标离开了canvas元素的范围内松手导致不触发mouseup，直接退出
+                if (isDrawing || isDragging) return;
 
-            startX = e.offsetX;
-            startY = e.offsetY;
-            isDragging = false;
+                startX = e.offsetX;
+                startY = e.offsetY;
+                isDragging = false;
 
-            clientX = e.clientX;
-            clientY = e.clientY;
-            isDrawing = true;
+                clientX = e.clientX;
+                clientY = e.clientY;
+                isDrawing = true;
+            } else if (e.button === 2) {
+                if (!isDrawing) {
+                    // 开始绘制
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                    isDrawing = true;
+                    calAndSetPoint(overlayCanvas, { clientX, clientY }, startPoint);
+                } else {
+                    // 结束绘制
+                    isDrawing = false;
+                    const rect = calRect(startPoint, endPoint);
+                    drawSelectArea(overlayCanvas, overlayCtx, rect, 'white');
+                    inputRect.value = `[${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`;
+                }
+            }
         });
 
         overlayCanvas.addEventListener('mousemove', e => {
-            if (e.button !== 0) return; // 0 表示左键
-            if (!isDrawing) return; // 不是绘制状态，直接退出
-            if (!isDragging) {
-                const dx = e.offsetX - startX;
-                const dy = e.offsetY - startY;
-                // 判断是否拖拽
-                if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-                    isDragging = true;
-                    calAndSetPoint(overlayCanvas, { clientX, clientY }, startPoint);
-                    // console.log("startPoint:", startPoint);
-                } else {
-                    return; // 未达到拖拽阈值
+            // 1 表示左键按住
+            if (e.buttons === 1) {
+                if (!isDrawing) return; // 不是绘制状态，直接退出
+                if (!isDragging) {
+                    const dx = e.offsetX - startX;
+                    const dy = e.offsetY - startY;
+                    // 判断是否拖拽
+                    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                        isDragging = true;
+                        calAndSetPoint(overlayCanvas, { clientX, clientY }, startPoint);
+                        // console.log("startPoint:", startPoint);
+                    } else {
+                        return; // 未达到拖拽阈值
+                    }
                 }
-            }
 
-            calAndSetPoint(overlayCanvas, e, endPoint);
-            // console.log("endPoint:", endPoint);
-            drawSelectArea(overlayCanvas, overlayCtx, calRect(startPoint, endPoint), 'red');
+                calAndSetPoint(overlayCanvas, e, endPoint);
+                // console.log("endPoint:", endPoint);
+                const rect = calRect(startPoint, endPoint);
+                drawSelectArea(overlayCanvas, overlayCtx, rect, 'red');
+                inputRect.value = `[${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`;
+            } else if (e.buttons === 0) {
+                if (!isDrawing) return; // 不是绘制状态，直接退出
+                calAndSetPoint(overlayCanvas, e, endPoint);
+                // console.log("endPoint:", endPoint);
+                const rect = calRect(startPoint, endPoint);
+                drawSelectArea(overlayCanvas, overlayCtx, rect, 'red');
+                inputRect.value = `[${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`;
+            }
         });
 
         overlayCanvas.addEventListener('mouseup', e => {
-            if (e.button !== 0) return; // 0 表示左键
-            if (!isDrawing) return; // 不是绘制状态，直接退出
-            isDrawing = false; // 关闭绘制状态
-            if (!isDragging) return; // 不是鼠标拖拽操作，直接退出
-            calAndSetPoint(overlayCanvas, e, endPoint);
-            // console.log("endPoint:", endPoint);
-            const rect = calRect(startPoint, endPoint);
-            drawSelectArea(overlayCanvas, overlayCtx, rect, 'white');
-            inputRect.value = `[${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`;
+            // 0 表示左键
+            if (e.button === 0) {
+                if (!isDrawing) return; // 不是绘制状态，直接退出
+                isDrawing = false; // 关闭绘制状态
+                if (!isDragging) return; // 不是鼠标拖拽操作，直接退出
+                calAndSetPoint(overlayCanvas, e, endPoint);
+                // console.log("endPoint:", endPoint);
+                const rect = calRect(startPoint, endPoint);
+                drawSelectArea(overlayCanvas, overlayCtx, rect, 'white');
+                inputRect.value = `[${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`;
+            }
         });
 
         // 监听鼠标移动绘制放大镜
@@ -245,16 +668,18 @@ function loadImage(path) {
             mCtx.strokeStyle = 'rgb(88, 88, 88)';
             mCtx.lineWidth = 1;
             for (let i = 0; i <= zoomPixelCount; i++) {
+                const pos = i * pixelSize;
+
                 // 画竖线
                 mCtx.beginPath();
-                mCtx.moveTo(i * pixelSize, 0);
-                mCtx.lineTo(i * pixelSize, magnifierWidth);
+                mCtx.moveTo(pos, 0);
+                mCtx.lineTo(pos, magnifierWidth);
                 mCtx.stroke();
 
                 // 画横线
                 mCtx.beginPath();
-                mCtx.moveTo(0, i * pixelSize);
-                mCtx.lineTo(magnifierWidth, i * pixelSize);
+                mCtx.moveTo(0, pos);
+                mCtx.lineTo(magnifierWidth, pos);
                 mCtx.stroke();
             }
 
@@ -312,7 +737,6 @@ function loadImage(path) {
         overlayCanvas.addEventListener('click', e => {
             // 是拖动框选，不执行点击行为
             if (isDragging) {
-                e.preventDefault();
                 e.stopPropagation();
                 isDragging = false;
                 return;
@@ -334,12 +758,12 @@ function loadImage(path) {
             item.dataset.rgb = `${rgba[0]}, ${rgba[1]}, ${rgba[2]}`;
             item.innerHTML = `<div class="color-swatch" style="background-color: ${hex};"></div><span>${colorInfo}</span>`;
 
-            item.addEventListener('click', () => {
+            item.addEventListener('click', e => {
+                e.stopPropagation(); // 阻止事件冒泡，避免触发 colorList 的 click 事件
                 selectColorItem(item);
             });
 
             item.addEventListener('contextmenu', e => {
-                e.preventDefault();
                 e.stopPropagation();
                 selectColorItem(item);
 
@@ -367,6 +791,8 @@ function loadImage(path) {
         });
 
         overlayCanvas.addEventListener('keydown', async e => {
+            e.preventDefault(); // 阻止默认行为
+            e.stopPropagation(); // 阻止事件冒泡
             const code = e.code;
             if (code === 'ShiftLeft' || code === 'ShiftRight') {
                 step = fastStep;
@@ -374,7 +800,6 @@ function loadImage(path) {
             }
 
             if (keyMap[code]) {
-                e.preventDefault(); // 阻止默认滚动等行为
                 const [dx, dy] = keyMap[code]();
                 const res = await window.electronAPI.moveMouseRelative(dx, dy);
                 if (!res.success) {
@@ -384,7 +809,6 @@ function loadImage(path) {
                 }
             } else if (code === 'Space') {
                 window.electronAPI.simulateClick();
-                e.preventDefault();
             }
         });
 
@@ -396,12 +820,26 @@ function loadImage(path) {
         });
 
 
+        // 创建指针
+        const pointer = document.createElement('img');
+        pointer.src = 'pointer.svg';
+        pointer.style.position = 'absolute';
+        pointer.style.width = '24px';
+        pointer.style.height = '24px';
+        pointer.style.transform = 'translate(-50%, -100%)';
+        pointer.style.display = 'none';
+        pointer.style.pointerEvents = 'none';
+        // pointer.style.zIndex = '10';
+        pointer.classList.add('canvas-pointer'); // 可选，用于后续样式控制
+
         // 创建图片容器
         const tab = document.createElement('div');
         tab.classList.add('tab');
-        // 叠加canvas层
+
+        //添加 canvas 和指针
         tab.appendChild(bgCanvas);
         tab.appendChild(overlayCanvas);
+        tab.appendChild(pointer); // 👈 添加指针到 tab 层
         tabPanels.appendChild(tab);
 
         // 创建tab button
@@ -426,16 +864,27 @@ function loadImage(path) {
                 overlayCanvas,
                 overlayCtx,
                 startPoint,
-                endPoint
+                endPoint,
+                pointer,
+                filename
             };
+            const rect = calRect(startPoint, endPoint);
+            if (rect.x < 0 || rect.y < 0) {
+                inputRect.value = '';
+            } else {
+                inputRect.value = `[${rect.x}, ${rect.y}, ${rect.w}, ${rect.h}]`;
+            }
         });
 
         // 创建tab close
         const tabClose = document.createElement("span");
         tabClose.classList.add('tab-close');
-        tabClose.textContent = ' x '
+        tabClose.title = '关闭图片';
+        tabClose.innerHTML = `
+            <svg t="1750507841494" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2627" width="200" height="200"><path d="M818.346667 182.058667a42.666667 42.666667 0 0 1 4.650666 57.493333l-2.389333 2.816L570.197333 512l250.410667 269.653333 2.389333 2.773334a42.666667 42.666667 0 0 1-64.938666 55.253333L512 574.698667 265.941333 839.701333a42.666667 42.666667 0 0 1-64.938666-55.253333l2.389333-2.816L453.781333 512 203.392 242.346667l-2.389333-2.773334a42.666667 42.666667 0 0 1 64.938666-55.253333L512 449.28 758.058667 184.298667a42.666667 42.666667 0 0 1 60.309333-2.24z" fill="#ffffff" p-id="2628"></path></svg>
+        `;
+        // tabClose.textContent = ' x '
         tabClose.addEventListener('click', e => {
-            e.preventDefault();
             e.stopPropagation(); // 防止触发 tab 切换
             if (!confirm("确认关闭这个图片？\n" + filename)) return;
             const wasActive = tabButton.classList.contains('active');
@@ -448,6 +897,10 @@ function loadImage(path) {
                 const allTabButtons = document.querySelectorAll('.tab-button');
                 if (allTabButtons.length > 0) {
                     allTabButtons[allTabButtons.length - 1].click();
+                } else {
+                    // 如果没有剩余的tab，清空当前图片上下文
+                    currentImageContext = null;
+                    inputRect.value = '';
                 }
             }
 
@@ -474,16 +927,32 @@ window.electronAPI.onLoadImages((paths) => {
 window.electronAPI.onTriggerCapture(() => {
     if (!currentImageContext) {
         alert('当前图片上下文为空');
-    } else if (!cropSelection(currentImageContext)) {
-        alert('图片框选范围不合法');
+        return;
     }
+
+    const { startPoint, endPoint, imageCanvas, filename } = currentImageContext;
+    const rect = calRect(startPoint, endPoint);
+    if (rect.x < 0 || rect.y < 0) {
+        showToast('无效的裁剪区域', 'error');
+        return;
+    }
+
+    cropSelection(imageCanvas, rect, filename);
+    showToast('裁剪图片成功', 'success');
 });
 
 
-const cropSelection = ({ startPoint, endPoint, imageCanvas }) => {
-    if (!startPoint || !endPoint) return false;
+const cropSelection = (imageCanvas, rect, originalFilename) => {
+    const { x, y, w, h } = rect;
 
-    const { x, y, w, h } = calRect(startPoint, endPoint);
+    // 生成新文件名，例如：foo_[x,y,w,h].png
+    const baseName = originalFilename.replace(/\.[^.]+$/, ''); // 去掉扩展名
+    const rawExt = originalFilename.split('.').pop(); // 原始扩展名
+    const croppedName = rawExt.toLowerCase() === 'png'
+        ? `${baseName}_[${x},${y},${w},${h}].${rawExt}` // 如果原本就是 png，就直接追加
+        : `${baseName}_[${x},${y},${w},${h}].${rawExt}.png`; // 否则追加 ".原始扩展名.png"
+
+
     // 创建离屏 canvas 存储裁剪结果
     const cropCanvas = document.createElement('canvas');
     cropCanvas.width = w;
@@ -499,18 +968,29 @@ const cropSelection = ({ startPoint, endPoint, imageCanvas }) => {
     const croppedImageDataUrl = cropCanvas.toDataURL('image/png'); // base64
     const croppedImg = new Image();
     croppedImg.src = croppedImageDataUrl;
+    croppedImg.draggable = true;
     croppedImg.classList.add('image-item');
+    // 保存文件名在自定义属性中
+    croppedImg.dataset.filename = croppedName;
+
     croppedImg.addEventListener('click', e => {
+        e.stopPropagation(); // 阻止事件冒泡，避免触发 imageList 的 click 事件
         selectImageItem(croppedImg);
     });
 
     croppedImg.addEventListener('contextmenu', e => {
-        e.preventDefault();
         e.stopPropagation();
         selectImageItem(croppedImg);
         window.electronAPI.showImageItemMenu({
-            data: croppedImageDataUrl
+            data: croppedImageDataUrl,
+            filename: croppedImg.dataset.filename // 加入文件名
         });
+    });
+
+    croppedImg.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/uri-list', croppedImg.src); // base64 URL
+        // 传递文件名（自定义 MIME 类型字符串）
+        e.dataTransfer.setData('application/x-filename', croppedImg.dataset.filename);
     });
 
     // 绑定所有图片的双击事件
@@ -523,8 +1003,6 @@ const cropSelection = ({ startPoint, endPoint, imageCanvas }) => {
         }
     });
     imageList.appendChild(croppedImg);
-
-    return true;
 };
 
 
@@ -559,17 +1037,29 @@ function selectColorItem(item) {
 
 window.electronAPI.onDeleteColorItem(() => {
     if (currentSelectedColorItem) {
+        const dataset = currentSelectedColorItem.dataset;
+        const data = {
+            pos: dataset.pos,
+            hex: dataset.hex,
+            rgb: dataset.rgb,
+        };
         currentSelectedColorItem.remove();
         currentSelectedColorItem = null;
         if (colorList.children.length === 0) {
-            colorOrder = 1;
+            colorOrder = 1; // 重置颜色项计数
         }
+        showToast(`删除颜色成功: ${data.hex} (${data.rgb}) @ ${data.pos}`, 'info');
     }
 });
 
 colorList.addEventListener('contextmenu', e => {
-    e.preventDefault();
     window.electronAPI.showColorListMenu();
+});
+
+colorList.addEventListener('click', () => {
+    // 取消当前选中颜色项
+    document.querySelectorAll('.color-item.selected').forEach(e => e.classList.remove('selected'));
+    currentSelectedColorItem = null;
 });
 
 window.electronAPI.onExportAllColorItem(() => {
@@ -586,6 +1076,7 @@ window.electronAPI.onExportAllColorItem(() => {
 
     // 你可以：打印、保存到文件、发送回主进程等等
     console.log('导出颜色项:', result);
+    showToast(`已导出 ${result.length} 个颜色`, 'success');
 
     // 示例：发回主进程保存为 JSON 文件
     // window.electronAPI.saveExportedColorItems(result);
@@ -595,6 +1086,7 @@ window.electronAPI.onDeleteAllColorItem(() => {
     colorList.innerHTML = ''; // 清空所有颜色项
     currentSelectedColorItem = null;
     colorOrder = 1;
+    showToast('已删除所有颜色', 'info');
 });
 
 function selectImageItem(item) {
@@ -610,12 +1102,21 @@ window.electronAPI.onDeleteImageItem(() => {
     if (currentSelectedImageItem) {
         currentSelectedImageItem.remove();
         currentSelectedImageItem = null;
+        if (imageList.children.length === 0) {
+            imageOrder = 1; // 重置图片项计数
+        }
+        showToast('删除图片成功', 'info');
     }
 });
 
 imageList.addEventListener('contextmenu', e => {
-    e.preventDefault();
     window.electronAPI.showImageListMenu();
+});
+
+imageList.addEventListener('click', () => {
+    // 取消当前选中图片项
+    document.querySelectorAll('.image-item.selected').forEach(e => e.classList.remove('selected'));
+    currentSelectedImageItem = null;
 });
 
 window.electronAPI.onExportAllImageItem(async () => {
@@ -643,37 +1144,64 @@ window.electronAPI.onExportAllImageItem(async () => {
     }
 
     console.log('导出图片项:', result);
+    showToast(`已导出 ${result.length} 张图片`, 'success');
     // window.electronAPI.saveExportedImageItems(result);
 });
 
 window.electronAPI.onDeleteAllImageItem(() => {
     imageList.innerHTML = ''; // 清空所有图片项
     currentSelectedImageItem = null;
+    imageOrder = 1;
+    showToast('已删除所有图片', 'info');
 });
-
-
 
 
 const modal = document.getElementById('preview-modal');
 const previewImg = document.getElementById('preview-img');
-let scale = 2;
 
-// 点击模态框关闭预览
-modal.addEventListener('click', () => {
-    modal.style.display = 'none';
-    scale = 2;
+let scale = 2; // 预览图片的初始缩放比例
+let offsetX = 0;
+let offsetY = 0;
+let isPanning = false; // 是否正在拖动预览图片
+let startX, startY;
+
+// 应用 transform 统一更新
+function updateTransform() {
+    previewImg.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+}
+
+previewImg.addEventListener('click', e => {
+    e.preventDefault(); // 阻止默认行为
+    e.stopPropagation(); // 阻止事件冒泡，避免触发模态框的 click 事件
 });
 
-// ESC 键关闭预览
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        modal.style.display = 'none';
-        scale = 2;
-    }
+// 拖动：鼠标按下
+previewImg.addEventListener('mousedown', e => {
+    if (e.button !== 0) return; // 仅左键
+    e.preventDefault(); // 阻止默认行为，避免选中图片
+    isPanning = true;
+    startX = e.clientX - offsetX;
+    startY = e.clientY - offsetY;
+    previewImg.style.cursor = 'grabbing';
+});
+
+// 拖动：鼠标移动
+previewImg.addEventListener('mousemove', e => {
+    e.preventDefault(); // 阻止默认行为，避免触发拖拽img默认行为
+    if (!isPanning) return;
+    offsetX = e.clientX - startX;
+    offsetY = e.clientY - startY;
+    updateTransform();
+});
+
+// 鼠标释放，结束拖动
+window.addEventListener('mouseup', () => {
+    isPanning = false;
+    previewImg.style.cursor = 'grab';
 });
 
 // 滚轮放大缩小
-previewImg.addEventListener('wheel', (e) => {
+modal.addEventListener('wheel', e => {
     e.preventDefault();
 
     const delta = e.deltaY;
@@ -684,9 +1212,120 @@ previewImg.addEventListener('wheel', (e) => {
         scale += zoomSpeed;
     } else {
         // 向下滚：缩小
-        scale = Math.max(0.1, scale - zoomSpeed);
+        scale = Math.max(0.5, scale - zoomSpeed);
     }
 
-    previewImg.style.transform = `scale(${scale})`;
+    updateTransform(); // 保持 translate + scale 一致
+}, { passive: false }); // 兼容 Chrome 默认滚动
+
+function resetPreview() {
+    scale = 2;
+    offsetX = 0;
+    offsetY = 0;
+    isPanning = false;
+    updateTransform();
+    previewImg.style.cursor = 'grab';
+}
+
+
+// 点击模态框关闭预览
+modal.addEventListener('click', () => {
+    if (isPanning) return; // 如果正在拖动，点击不关闭
+    modal.style.display = 'none';
+    resetPreview();
 });
+
+// ESC 键关闭预览
+window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        modal.style.display = 'none';
+        resetPreview();
+    }
+});
+
+
+
+// toast
+const container = document.getElementById('toast-container');
+function showToast(message, type = 'info', duration = 3000) {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    toast.innerHTML = `
+        <span>${message}</span>
+        <span class="toast-close" title="关闭">
+            <svg t="1750507841494" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2627" width="200" height="200"><path d="M818.346667 182.058667a42.666667 42.666667 0 0 1 4.650666 57.493333l-2.389333 2.816L570.197333 512l250.410667 269.653333 2.389333 2.773334a42.666667 42.666667 0 0 1-64.938666 55.253333L512 574.698667 265.941333 839.701333a42.666667 42.666667 0 0 1-64.938666-55.253333l2.389333-2.816L453.781333 512 203.392 242.346667l-2.389333-2.773334a42.666667 42.666667 0 0 1 64.938666-55.253333L512 449.28 758.058667 184.298667a42.666667 42.666667 0 0 1 60.309333-2.24z" fill="#ffffff" p-id="2628"></path></svg>
+        </span>
+    `;
+
+    const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => toast.remove());
+
+    container.appendChild(toast);
+
+    function createTimer() {
+        return setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease forwards';
+            toast.addEventListener('animationend', () => toast.remove());
+        }, duration);
+    }
+
+    let hideTimer = createTimer();
+
+    // 悬停时暂停消失
+    toast.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+    toast.addEventListener('mouseleave', () => {
+        hideTimer = createTimer();
+    });
+}
+
+
+
+
+tabPanels.addEventListener('dragover', (e) => {
+    e.preventDefault(); // 必须阻止默认，才能触发 drop
+}, true); // 第三个参数 `true` 表示使用事件捕获阶段
+
+tabPanels.addEventListener('drop', (e) => {
+    e.preventDefault();
+
+    // 支持从图片元素拖拽（base64 URI）
+    const uri = e.dataTransfer.getData('text/uri-list');
+    const filename = e.dataTransfer.getData('application/x-filename');
+    if (uri && uri.startsWith('data:image')) {
+        // 拖入 base64 图片
+        loadImage(uri, { name: filename });
+        return;
+    }
+
+    // 支持从本地文件系统拖入图片文件（如 PNG, JPG）
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            loadImage(event.target.result, { name: file.name });
+        };
+        reader.readAsDataURL(file);
+        return;
+    }
+
+    showToast('拖入的不是支持的图片格式', 'warning');
+}, true);
+
+
+let dragCounter = 0;
+tabPanels.addEventListener('dragenter', () => {
+    dragCounter++;
+    tabPanels.classList.add('dragover');
+}, true);
+tabPanels.addEventListener('dragleave', () => {
+    dragCounter--;
+    if (dragCounter === 0) {
+        tabPanels.classList.remove('dragover');
+    }
+}, true);
+tabPanels.addEventListener('drop', () => {
+    dragCounter = 0;
+    tabPanels.classList.remove('dragover');
+}, true);
 

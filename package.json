@@ -2,6 +2,7 @@
   "name": "color-picker-assistant",
   "version": "1.0.0",
   "main": "main.js",
+  "type": "module",
   "build": {
     "appId": "com.yourdomain.yourapp",
     "mac": {
@@ -36,6 +37,7 @@
   "license": "ISC",
   "description": "color picker assistant",
   "dependencies": {
-    "@nut-tree-fork/nut-js": "^4.2.6"
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "electron-store": "^10.1.0"
   }
 }
