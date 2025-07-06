@@ -235,8 +235,8 @@ tabButtons.forEach(btn => {
 });
 
 function updateBadgeFromList(tabName, listElement) {
-  const count = listElement.children.length;
-  updateTabBadge(tabName, count);
+    const count = listElement.children.length;
+    updateTabBadge(tabName, count);
 }
 
 function observeList(tabName, listElement) {
@@ -255,18 +255,18 @@ tabContents.forEach(panel => {
 
 
 function updateTabBadge(tabName, count) {
-  const wrapper = document.querySelector(`.tab-btn-wrapper button[data-tab="${tabName}"]`)?.parentElement;
-  if (!wrapper) return;
+    const wrapper = document.querySelector(`.tab-btn-wrapper button[data-tab="${tabName}"]`)?.parentElement;
+    if (!wrapper) return;
 
-  const badge = wrapper.querySelector('.tab-badge');
-  if (!badge) return;
+    const badge = wrapper.querySelector('.tab-badge');
+    if (!badge) return;
 
-  if (count > 0) {
-    badge.textContent = count > 99 ? '99+' : count;
-    badge.style.display = 'inline-block';
-  } else {
-    badge.style.display = 'none';
-  }
+    if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : count;
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
 }
 
 // 匹配 [x, y, w, h] 格式，x/y/w/h 为整数
@@ -583,7 +583,7 @@ function loadImage(path, options = {}) {
                     const dx = e.offsetX - startX;
                     const dy = e.offsetY - startY;
                     // 判断是否拖拽
-                    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                    if (Math.abs(dx) > 15 || Math.abs(dy) > 15) {
                         isDragging = true;
                         calAndSetPoint(overlayCanvas, { clientX, clientY }, startPoint);
                         // console.log("startPoint:", startPoint);
@@ -1062,7 +1062,39 @@ colorList.addEventListener('click', () => {
     currentSelectedColorItem = null;
 });
 
-window.electronAPI.onExportAllColorItem(() => {
+
+function convertToRelColor(colors) {
+    if (!colors || colors.length === 0) return [];
+
+    // 取第一个颜色hex和pos
+    const baseColorHex = colors[0].hex;
+    const [x0, y0] = colors[0].pos.split(',').map(s => parseInt(s.trim(), 10));
+
+    // 生成相对坐标数组（跳过第一个点）
+    const relativeColors = colors.slice(1).map(c => {
+        const [x, y] = c.pos.split(',').map(s => parseInt(s.trim(), 10));
+        const dx = x - x0;
+        const dy = y - y0;
+        return [dx, dy, c.hex];
+    });
+
+    return [baseColorHex, relativeColors];
+}
+
+function formatRelColor(colors) {
+    if (!colors || colors.length === 0) return '';
+
+    const [baseColorHex, relativeColors] = colors;
+
+    // 把内层数组转成 '[dx, dy, "hex"]' 形式，元素间逗号后带空格
+    const innerStr = relativeColors
+        .map(item => `[${item[0]}, ${item[1]}, "${item[2]}"]`)
+        .join(', ');
+
+    return `["${baseColorHex}", [${innerStr}]]`;
+}
+
+window.electronAPI.onExportAllColorItem(async () => {
     const items = colorList.querySelectorAll('.color-item');
     const result = [];
 
@@ -1075,11 +1107,25 @@ window.electronAPI.onExportAllColorItem(() => {
     });
 
     // 你可以：打印、保存到文件、发送回主进程等等
-    console.log('导出颜色项:', result);
-    showToast(`已导出 ${result.length} 个颜色`, 'success');
+    const res = formatRelColor(convertToRelColor(result));
+    console.log('导出颜色项:', res);
 
-    // 示例：发回主进程保存为 JSON 文件
-    // window.electronAPI.saveExportedColorItems(result);
+    const { action } = await dialog.show({
+        title: '确认复制',
+        content: `<pre class="dialog-body">${res}</pre>`,
+        buttons: [
+            { label: '复制', value: 'copy', class: 'primary' },
+            { label: '取消', value: 'cancel', class: 'text' }
+        ]
+    });
+
+    if (action === 'copy') {
+        navigator.clipboard.writeText(res);
+        showToast(`已导出 ${result.length} 个颜色`, 'success');
+    } else {
+        console.log('用户取消');
+    }
+
 });
 
 window.electronAPI.onDeleteAllColorItem(() => {
@@ -1286,26 +1332,35 @@ tabPanels.addEventListener('dragover', (e) => {
     e.preventDefault(); // 必须阻止默认，才能触发 drop
 }, true); // 第三个参数 `true` 表示使用事件捕获阶段
 
-tabPanels.addEventListener('drop', (e) => {
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+tabPanels.addEventListener('drop', async (e) => {
     e.preventDefault();
 
     // 支持从图片元素拖拽（base64 URI）
     const uri = e.dataTransfer.getData('text/uri-list');
     const filename = e.dataTransfer.getData('application/x-filename');
-    if (uri && uri.startsWith('data:image')) {
+    if (uri?.startsWith('data:image')) {
         // 拖入 base64 图片
         loadImage(uri, { name: filename });
         return;
     }
 
-    // 支持从本地文件系统拖入图片文件（如 PNG, JPG）
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-            loadImage(event.target.result, { name: file.name });
-        };
-        reader.readAsDataURL(file);
+    // 支持从本地文件系统拖入图片文件
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+
+    if (files.length) {
+        for (const file of files) {
+            const result = await readFileAsDataURL(file);
+            loadImage(result, { name: file.name });
+        }
         return;
     }
 
@@ -1329,3 +1384,78 @@ tabPanels.addEventListener('drop', () => {
     tabPanels.classList.remove('dragover');
 }, true);
 
+
+
+
+
+// dialog start
+class Dialog {
+    constructor(containerId) {
+        this.container = document.getElementById(containerId);
+        if (!this.container) {
+            throw new Error(`Container #${containerId} not found`);
+        }
+    }
+
+    show({ title, content, buttons }) {
+        return new Promise((resolve) => {
+            this.container.innerHTML = '';
+
+            const dialog = document.createElement('div');
+            dialog.className = 'dialog';
+
+            const backdrop = document.createElement('div');
+            backdrop.className = 'dialog-backdrop';
+            backdrop.addEventListener('click', () => {
+                this.hide();
+                resolve(null);
+            });
+
+            const contentBox = document.createElement('div');
+            contentBox.className = 'dialog-content';
+
+            contentBox.innerHTML = `
+        <h3>${title}</h3>
+        <div class="dialog-body">${content}</div>
+      `;
+
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'dialog-buttons';
+
+            buttons.forEach(btn => {
+                const button = document.createElement('button');
+                button.textContent = btn.label;
+                button.type = 'button';
+                if (btn.class) {
+                    button.className = btn.class;
+                }
+                button.addEventListener('click', () => {
+                    // 在点击时收集输入值
+                    const inputs = this.container.querySelectorAll('.dialog-body input, .dialog-body textarea');
+                    const values = {};
+                    inputs.forEach(el => {
+                        const key = el.name || el.id || 'value';
+                        values[key] = el.value;
+                    });
+
+                    this.hide();
+                    resolve({ action: btn.value, inputs: values });
+                });
+                btnContainer.appendChild(button);
+            });
+
+            contentBox.appendChild(btnContainer);
+
+            dialog.appendChild(backdrop);
+            dialog.appendChild(contentBox);
+            this.container.appendChild(dialog);
+        });
+    }
+
+    hide() {
+        this.container.innerHTML = '';
+    }
+}
+
+const dialog = new Dialog('dialog-container');
+// dialog end
